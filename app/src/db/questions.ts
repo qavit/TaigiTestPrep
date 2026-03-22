@@ -184,14 +184,26 @@ async function seedV1(
 // Queries
 // ---------------------------------------------------------------------------
 
-export async function getVocabSets(db: SQLite.SQLiteDatabase) {
-  return db.getAllAsync<{ set_id: number; set_code: string; label: string; description: string | null }>(
+export interface VocabSet {
+  set_id: number;
+  set_code: string;
+  label: string;
+  description: string | null;
+}
+
+export interface EntryTypeSetting {
+  entry_type: string;
+  enabled: number; // 0 | 1
+}
+
+export async function getVocabSets(db: SQLite.SQLiteDatabase): Promise<VocabSet[]> {
+  return db.getAllAsync<VocabSet>(
     'SELECT set_id, set_code, label, description FROM vocab_set ORDER BY set_id'
   );
 }
 
-export async function getEntryTypeSettings(db: SQLite.SQLiteDatabase) {
-  return db.getAllAsync<{ entry_type: string; enabled: number }>(
+export async function getEntryTypeSettings(db: SQLite.SQLiteDatabase): Promise<EntryTypeSetting[]> {
+  return db.getAllAsync<EntryTypeSetting>(
     'SELECT entry_type, enabled FROM entry_type_setting ORDER BY entry_type'
   );
 }
@@ -204,5 +216,27 @@ export async function setEntryTypeEnabled(
   await db.runAsync(
     'INSERT OR REPLACE INTO entry_type_setting (entry_type, enabled) VALUES (?, ?)',
     entryType, enabled ? 1 : 0
+  );
+}
+
+export async function getUserSetting(
+  db: SQLite.SQLiteDatabase,
+  key: string,
+  defaultValue: string,
+): Promise<string> {
+  const row = await db.getFirstAsync<{ value: string }>(
+    'SELECT value FROM user_setting WHERE key = ?', key
+  );
+  return row?.value ?? defaultValue;
+}
+
+export async function setUserSetting(
+  db: SQLite.SQLiteDatabase,
+  key: string,
+  value: string,
+): Promise<void> {
+  await db.runAsync(
+    'INSERT OR REPLACE INTO user_setting (key, value) VALUES (?, ?)',
+    key, value
   );
 }

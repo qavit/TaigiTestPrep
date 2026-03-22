@@ -3,7 +3,8 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SQLiteProvider, useSQLiteContext, SQLiteDatabase } from 'expo-sqlite';
 import { openQuestionsDb } from './src/db/questions';
-import FlashcardScreen from './src/screens/FlashcardScreen';
+import { DatabaseProvider } from './src/context/DatabaseContext';
+import AppNavigator from './src/navigation/AppNavigator';
 
 function Loading() {
   return (
@@ -13,8 +14,8 @@ function Loading() {
   );
 }
 
-// Inner component that has access to the sutian DB via useSQLiteContext.
-// Opens questions.db (which needs sutian for seeding) then renders the screen.
+// Has access to sutianDb via SQLiteProvider context.
+// Opens questions.db (needs sutianDb for first-launch seeding), then renders.
 function AppInner() {
   const sutianDb = useSQLiteContext();
   const [questionsDb, setQuestionsDb] = useState<SQLiteDatabase | null>(null);
@@ -33,12 +34,13 @@ function AppInner() {
       </View>
     );
   }
+  if (!questionsDb) return <Loading />;
 
-  if (!questionsDb) {
-    return <Loading />;
-  }
-
-  return <FlashcardScreen sutianDb={sutianDb} questionsDb={questionsDb} />;
+  return (
+    <DatabaseProvider sutianDb={sutianDb} questionsDb={questionsDb}>
+      <AppNavigator />
+    </DatabaseProvider>
+  );
 }
 
 export default function App() {
@@ -60,13 +62,7 @@ export default function App() {
 
 const styles = StyleSheet.create({
   center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fdf6ec',
+    flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fdf6ec',
   },
-  error: {
-    color: 'red',
-    padding: 24,
-  },
+  error: { color: 'red', padding: 24 },
 });
