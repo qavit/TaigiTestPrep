@@ -1,7 +1,8 @@
-import React, { Suspense } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import React, { Suspense, useEffect, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { SQLiteProvider } from 'expo-sqlite';
+import { SQLiteProvider, useSQLiteContext, SQLiteDatabase } from 'expo-sqlite';
+import { openQuestionsDb } from './src/db/questions';
 import FlashcardScreen from './src/screens/FlashcardScreen';
 
 function Loading() {
@@ -10,6 +11,34 @@ function Loading() {
       <ActivityIndicator size="large" color="#c0392b" />
     </View>
   );
+}
+
+// Inner component that has access to the sutian DB via useSQLiteContext.
+// Opens questions.db (which needs sutian for seeding) then renders the screen.
+function AppInner() {
+  const sutianDb = useSQLiteContext();
+  const [questionsDb, setQuestionsDb] = useState<SQLiteDatabase | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    openQuestionsDb(sutianDb)
+      .then(setQuestionsDb)
+      .catch(e => setError(String(e)));
+  }, [sutianDb]);
+
+  if (error) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.error}>{error}</Text>
+      </View>
+    );
+  }
+
+  if (!questionsDb) {
+    return <Loading />;
+  }
+
+  return <FlashcardScreen sutianDb={sutianDb} questionsDb={questionsDb} />;
 }
 
 export default function App() {
@@ -21,7 +50,7 @@ export default function App() {
         useSuspense
       >
         <Suspense fallback={<Loading />}>
-          <FlashcardScreen />
+          <AppInner />
         </Suspense>
       </SQLiteProvider>
       <StatusBar style="auto" />
@@ -35,5 +64,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#fdf6ec',
+  },
+  error: {
+    color: 'red',
+    padding: 24,
   },
 });

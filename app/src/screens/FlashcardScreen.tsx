@@ -6,11 +6,16 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useSQLiteContext } from 'expo-sqlite';
+import { SQLiteDatabase } from 'expo-sqlite';
 import { fetchRandomFlashcard, FlashcardRow } from '../db/sutian';
 
-export default function FlashcardScreen() {
-  const db = useSQLiteContext();
+interface Props {
+  sutianDb: SQLiteDatabase;
+  questionsDb: SQLiteDatabase;
+}
+
+export default function FlashcardScreen({ sutianDb }: Props) {
+  const db = sutianDb;
   const [card, setCard] = useState<FlashcardRow | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [loading, setLoading] = useState(true);
