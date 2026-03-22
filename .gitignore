@@ -1,0 +1,9 @@
+# SQLite databases (large binary files, derived from kautian)
+sutian_core.db
+app/assets/sutian_core.db
+
+# Exam materials (PDFs, MP3s)
+assets/
+
+# macOS
+.DS_Store
