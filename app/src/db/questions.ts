@@ -196,6 +196,11 @@ export interface EntryTypeSetting {
   enabled: number; // 0 | 1
 }
 
+export interface OrderedVocabSetEntry {
+  entry_id: number;
+  set_order: number | null;
+}
+
 export async function getVocabSets(db: SQLite.SQLiteDatabase): Promise<VocabSet[]> {
   return db.getAllAsync<VocabSet>(
     'SELECT set_id, set_code, label, description FROM vocab_set ORDER BY set_id'
@@ -205,6 +210,20 @@ export async function getVocabSets(db: SQLite.SQLiteDatabase): Promise<VocabSet[
 export async function getEntryTypeSettings(db: SQLite.SQLiteDatabase): Promise<EntryTypeSetting[]> {
   return db.getAllAsync<EntryTypeSetting>(
     'SELECT entry_type, enabled FROM entry_type_setting ORDER BY entry_type'
+  );
+}
+
+export async function getOrderedVocabSetEntries(
+  db: SQLite.SQLiteDatabase,
+  setCode: string,
+): Promise<OrderedVocabSetEntry[]> {
+  return db.getAllAsync<OrderedVocabSetEntry>(
+    `SELECT vse.entry_id, vse.set_order
+     FROM vocab_set_entry vse
+     JOIN vocab_set vs ON vs.set_id = vse.set_id
+     WHERE vs.set_code = ?
+     ORDER BY vse.set_order, vse.entry_id`,
+    setCode
   );
 }
 

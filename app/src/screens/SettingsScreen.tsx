@@ -33,18 +33,21 @@ export default function SettingsScreen() {
 
   const [vocabSets, setVocabSets] = useState<VocabSet[]>([]);
   const [activeSetCode, setActiveSetCode] = useState<string>('all');
+  const [studyMode, setStudyMode] = useState<string>('random');
   const [entryTypeSettings, setEntryTypeSettings] = useState<EntryTypeSetting[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const [sets, etSettings, savedSetCode] = await Promise.all([
+    const [sets, etSettings, savedSetCode, savedStudyMode] = await Promise.all([
       getVocabSets(questionsDb),
       getEntryTypeSettings(questionsDb),
       getUserSetting(questionsDb, 'active_vocab_set', 'all'),
+      getUserSetting(questionsDb, 'study_mode', 'random'),
     ]);
     setVocabSets(sets);
     setEntryTypeSettings(etSettings);
     setActiveSetCode(savedSetCode);
+    setStudyMode(savedStudyMode);
     setLoading(false);
   }, [questionsDb]);
 
@@ -53,7 +56,11 @@ export default function SettingsScreen() {
   const handleSetCode = useCallback(async (code: string) => {
     setActiveSetCode(code);
     await setUserSetting(questionsDb, 'active_vocab_set', code);
-  }, [questionsDb]);
+    if (code === 'all' && studyMode === 'sequential') {
+      setStudyMode('random');
+      await setUserSetting(questionsDb, 'study_mode', 'random');
+    }
+  }, [questionsDb, studyMode]);
 
   const handleEntryTypeToggle = useCallback(async (entryType: string, enabled: boolean) => {
     setEntryTypeSettings(prev =>
@@ -61,6 +68,13 @@ export default function SettingsScreen() {
     );
     await setEntryTypeEnabled(questionsDb, entryType, enabled);
   }, [questionsDb]);
+
+  const handleStudyMode = useCallback(async (mode: string) => {
+    setStudyMode(mode);
+    await setUserSetting(questionsDb, 'study_mode', mode);
+  }, [questionsDb]);
+
+  const sequentialAvailable = activeSetCode !== 'all';
 
   if (loading) {
     return (
@@ -94,6 +108,31 @@ export default function SettingsScreen() {
         ))}
       </View>
 
+      <Text style={styles.sectionHeader}>出題模式</Text>
+      <Text style={styles.sectionNote}>
+        順序模式會依目前詞彙集的詞表順序往下走；全部詞目僅支援隨機。
+      </Text>
+      <View style={styles.card}>
+        <Pressable onPress={() => handleStudyMode('random')}>
+          <VocabSetOption
+            label="隨機"
+            description="每次抽一張符合條件的詞卡"
+            active={studyMode === 'random'}
+          />
+        </Pressable>
+        <Pressable
+          onPress={() => sequentialAvailable && handleStudyMode('sequential')}
+          disabled={!sequentialAvailable}
+        >
+          <VocabSetOption
+            label="依詞表順序"
+            description={sequentialAvailable ? '依目前詞彙集的排序逐張前進' : '請先選擇特定詞彙集'}
+            active={studyMode === 'sequential'}
+            disabled={!sequentialAvailable}
+          />
+        </Pressable>
+      </View>
+
       {/* Entry type toggles */}
       <Text style={styles.sectionHeader}>詞目類型</Text>
       <Text style={styles.sectionNote}>
@@ -124,17 +163,19 @@ export default function SettingsScreen() {
 // ---------------------------------------------------------------------------
 
 function VocabSetOption({
-  label, description, active,
+  label, description, active, disabled = false,
 }: {
-  label: string; description: string; active: boolean;
+  label: string; description: string; active: boolean; disabled?: boolean;
 }) {
   return (
-    <View style={[styles.row, active && styles.rowActive]}>
+    <View style={[styles.row, active && styles.rowActive, disabled && styles.rowDisabled]}>
       <View style={styles.rowTexts}>
-        <Text style={[styles.rowLabel, active && styles.rowLabelActive]}>{label}</Text>
-        {description ? <Text style={styles.rowDesc}>{description}</Text> : null}
+        <Text style={[styles.rowLabel, active && styles.rowLabelActive, disabled && styles.rowLabelDisabled]}>
+          {label}
+        </Text>
+        {description ? <Text style={[styles.rowDesc, disabled && styles.rowDescDisabled]}>{description}</Text> : null}
       </View>
-      <View style={[styles.radioOuter, active && styles.radioOuterActive]}>
+      <View style={[styles.radioOuter, active && styles.radioOuterActive, disabled && styles.radioOuterDisabled]}>
         {active && <View style={styles.radioInner} />}
       </View>
     </View>
@@ -211,16 +252,22 @@ const styles = StyleSheet.create({
   rowActive: {
     backgroundColor: '#fdf6ec',
   },
+  rowDisabled: {
+    opacity: 0.45,
+  },
   rowTexts: { flex: 1 },
   rowLabel: { fontSize: 15, color: '#222', fontWeight: '500' },
   rowLabelActive: { color: '#c0392b' },
+  rowLabelDisabled: { color: '#777' },
   rowDesc: { fontSize: 12, color: '#999', marginTop: 2, lineHeight: 17 },
+  rowDescDisabled: { color: '#aaa' },
   radioOuter: {
     width: 20, height: 20, borderRadius: 10,
     borderWidth: 2, borderColor: '#ccc',
     alignItems: 'center', justifyContent: 'center',
   },
   radioOuterActive: { borderColor: '#c0392b' },
+  radioOuterDisabled: { borderColor: '#ddd' },
   radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#c0392b' },
   divider: { height: 1, backgroundColor: '#f0f0f0', marginLeft: 16 },
 });

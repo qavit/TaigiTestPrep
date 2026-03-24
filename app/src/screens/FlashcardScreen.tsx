@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -9,11 +9,22 @@ import {
 import { useDatabases } from '../context/DatabaseContext';
 import {
   fetchRandomFlashcard,
-  fetchVocabSetEntryIds,
   FlashcardFilter,
   FlashcardRow,
 } from '../db/sutian';
-import { getEntryTypeSettings, getUserSetting } from '../db/questions';
+import {
+  getEntryTypeSettings,
+  getOrderedVocabSetEntries,
+  getUserSetting,
+  OrderedVocabSetEntry,
+} from '../db/questions';
+
+interface ResolvedFilter {
+  filter: FlashcardFilter;
+  filterLabel: string;
+  studyMode: string;
+  orderedEntries: OrderedVocabSetEntry[];
+}
 
 export default function FlashcardScreen() {
   const { sutianDb, questionsDb } = useDatabases();
@@ -23,11 +34,15 @@ export default function FlashcardScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterLabel, setFilterLabel] = useState('');
+  const [studyModeLabel, setStudyModeLabel] = useState('');
+  const lastSequentialEntryIdRef = useRef<number | null>(null);
+  const sequenceKeyRef = useRef<string>('');
 
-  const buildFilter = useCallback(async (): Promise<FlashcardFilter> => {
-    const [etSettings, activeSetCode] = await Promise.all([
+  const buildFilter = useCallback(async (): Promise<ResolvedFilter> => {
+    const [etSettings, activeSetCode, savedStudyMode] = await Promise.all([
       getEntryTypeSettings(questionsDb),
       getUserSetting(questionsDb, 'active_vocab_set', 'all'),
+      getUserSetting(questionsDb, 'study_mode', 'random'),
     ]);
 
     const allowedEntryTypes = new Set(
@@ -35,29 +50,84 @@ export default function FlashcardScreen() {
     );
 
     if (activeSetCode !== 'all') {
-      const ids = await fetchVocabSetEntryIds(questionsDb, activeSetCode);
-      setFilterLabel(activeSetCode === '700-chars' ? '700字表' : activeSetCode);
-      return { allowedEntryTypes, vocabSetEntryIds: ids };
+      const orderedEntries = await getOrderedVocabSetEntries(questionsDb, activeSetCode);
+      return {
+        filter: { allowedEntryTypes },
+        filterLabel: activeSetCode === '700-chars' ? '700字表' : activeSetCode,
+        studyMode: savedStudyMode === 'sequential' ? 'sequential' : 'random',
+        orderedEntries,
+      };
     }
 
-    setFilterLabel('全部詞目');
-    return { allowedEntryTypes };
+    return {
+      filter: { allowedEntryTypes },
+      filterLabel: '全部詞目',
+      studyMode: 'random',
+      orderedEntries: [],
+    };
   }, [questionsDb]);
+
+  const pickNextSequentialEntryId = useCallback((
+    orderedEntries: OrderedVocabSetEntry[],
+    currentEntryId: number | null,
+    offset = 1,
+  ): number | null => {
+    if (orderedEntries.length === 0) return null;
+
+    if (currentEntryId === null) {
+      return orderedEntries[0].entry_id;
+    }
+
+    const currentIndex = orderedEntries.findIndex(entry => entry.entry_id === currentEntryId);
+    const nextIndex = currentIndex >= 0 ? (currentIndex + offset) % orderedEntries.length : 0;
+    return orderedEntries[nextIndex]?.entry_id ?? null;
+  }, []);
 
   const loadCard = useCallback(async () => {
     setLoading(true);
     setRevealed(false);
     setError(null);
     try {
-      const filter = await buildFilter();
-      const row = await fetchRandomFlashcard(sutianDb, filter);
+      const resolved = await buildFilter();
+      setFilterLabel(resolved.filterLabel);
+      setStudyModeLabel(resolved.studyMode === 'sequential' ? '依詞表順序' : '隨機');
+
+      const sequenceKey = `${resolved.filterLabel}:${resolved.studyMode}`;
+      if (sequenceKeyRef.current !== sequenceKey) {
+        lastSequentialEntryIdRef.current = null;
+        sequenceKeyRef.current = sequenceKey;
+      }
+
+      let row: FlashcardRow | null;
+      if (resolved.studyMode === 'sequential' && resolved.orderedEntries.length > 0) {
+        row = null;
+
+        for (let offset = 0; offset < resolved.orderedEntries.length; offset += 1) {
+          const nextEntryId = pickNextSequentialEntryId(
+            resolved.orderedEntries,
+            lastSequentialEntryIdRef.current,
+            offset + 1,
+          );
+          if (nextEntryId === null) continue;
+
+          row = await fetchRandomFlashcard(sutianDb, { ...resolved.filter, entryId: nextEntryId });
+          if (row) {
+            lastSequentialEntryIdRef.current = row.entry_id;
+            break;
+          }
+        }
+      } else {
+        row = await fetchRandomFlashcard(sutianDb, resolved.filter);
+        lastSequentialEntryIdRef.current = null;
+      }
+
       setCard(row);
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [sutianDb, buildFilter]);
+  }, [sutianDb, buildFilter, pickNextSequentialEntryId]);
 
   useEffect(() => { loadCard(); }, [loadCard]);
 
@@ -88,6 +158,7 @@ export default function FlashcardScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.label}>{filterLabel}</Text>
+      <Text style={styles.subLabel}>{studyModeLabel}</Text>
 
       <Pressable style={styles.card} onPress={() => setRevealed(r => !r)}>
         <Text style={styles.headword}>{card.headword_display}</Text>
@@ -121,6 +192,9 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 13, color: '#999', letterSpacing: 2, textTransform: 'uppercase',
+  },
+  subLabel: {
+    fontSize: 12, color: '#c0392b', fontWeight: '600',
   },
   card: {
     width: '100%', minHeight: 280,
